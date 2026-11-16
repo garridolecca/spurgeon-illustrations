@@ -1,0 +1,7 @@
+node_modules/
+web/dist/
+web/public/data/
+web/public/models/
+data/
+__pycache__/
+*.pyc
