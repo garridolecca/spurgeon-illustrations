@@ -63,7 +63,8 @@ TAXONOMY = {
         "Moral decline": ["moral decay", "decline"],
         "Pride": ["pride"],
         "Envy": ["envy"],
-        "Hypocrisy": ["hypocrisy", "false piety", "self-deception"],
+        "Hypocrisy": ["hypocrisy", "false piety", "self-deception", "religion"],
+        "Selfishness": ["selfishness"],
         "Deceit and lies": ["deception", "falsehood"],
         "Idolatry": ["idolatry", "false worship"],
         "Hardness of heart": ["hardness of heart", "heart", "spiritual blindness"],
@@ -95,7 +96,7 @@ TAXONOMY = {
     },
     "Faith and Repentance": {
         "Faith": ["faith", "genuine faith", "personal faith", "faith in action", "humble faith"],
-        "Trust in God": ["trust", "trust in god", "dependence", "self-reliance", "surrender", "commitment"],
+        "Trust in God": ["trust", "trust in god", "dependence", "self-reliance", "surrender", "commitment", "resignation"],
         "Repentance": ["repentance", "penitence", "confession"],
         "Conversion": ["conversion", "spiritual transformation", "renewal", "moral change", "change", "restoration"],
         "Childlike faith": ["childhood faith"],
@@ -106,7 +107,8 @@ TAXONOMY = {
         "Assurance": ["assurance", "eternal security", "confidence", "permanence", "stability"],
         "Perseverance": ["perseverance", "endurance"],
         "Fear and anxiety": ["fear", "anxiety"],
-        "Strength from God": ["spiritual strength", "strength", "sufficiency"],
+        "Strength from God": ["spiritual strength", "strength", "sufficiency", "divine support"],
+        "Spiritual drift and stability": ["spiritual stability"],
         "Victory": ["victory", "triumph"],
         "Spiritual weakness": ["spiritual weakness", "weakness", "vulnerability", "helplessness"],
     },
@@ -144,12 +146,13 @@ TAXONOMY = {
         "Zeal": ["zeal", "passion"],
         "Courage": ["courage", "boldness"],
         "Simplicity": ["simplicity"],
+        "Hospitality": ["hospitality"],
     },
     "Suffering and Affliction": {
         "Affliction": ["affliction", "trouble", "tribulation", "oppression"],
         "Suffering": ["suffering"],
         "Faith under trial": ["faith in suffering", "trial", "testing"],
-        "Spiritual distress": ["spiritual pain", "spiritual crisis", "inner struggle"],
+        "Spiritual distress": ["spiritual pain", "spiritual crisis", "inner struggle", "spiritual condition"],
         "Despair": ["despair", "desolation"],
         "Loneliness and desertion": ["isolation", "solitude", "abandonment", "desertion"],
         "Grief and sorrow": ["grief", "sorrow", "loss", "regret", "divine sorrow"],
@@ -201,6 +204,7 @@ TAXONOMY = {
         "Judgment": ["judgment", "condemnation", "accountability", "final judgment"],
         "Hell": ["hell", "destruction"],
         "Warning": ["warning"],
+        "The fear of God and of judgment": ["fear of god"],
     },
     "Last Things": {
         "Resurrection": ["resurrection"],
@@ -221,9 +225,10 @@ TAXONOMY = {
     },
     "Evangelism and the Gospel Call": {
         "The gospel": ["gospel", "invitation", "gospel reception"],
-        "Evangelism and missions": ["evangelism", "mission"],
+        "Evangelism and missions": ["evangelism", "mission", "soul-winning"],
+        "The need of salvation": ["need for salvation"],
         "Sinners saved": ["sinners"],
-        "Urgency of salvation": ["urgency"],
+        "Urgency of salvation": ["urgency", "delay"],
     },
     "Worship and Praise": {
         "Worship": ["worship", "devotion", "praise"],
@@ -258,7 +263,7 @@ DROP = [
     "comparison", "accessibility", "mystery", "clarity", "spiritual identity", "spiritual equality",
     "spiritual authenticity", "divine action", "divine response", "foundation", "vision", "light", "darkness",
     "memory", "silence", "misunderstanding", "dignity", "beauty", "separation", "spiritual legacy", "gifts",
-    "perfection", "innocence", "revelation", "consecration", "distraction", "failure", "resilience",
+    "perfection", "innocence", "revelation", "consecration", "distraction", "failure", "resilience", "self-destruction",
 ]
 
 

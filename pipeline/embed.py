@@ -97,9 +97,11 @@ def main():
     for c, mem in groups.items():
         mem.sort(key=lambda t: -cnt[t])
         n = sum(cnt[t] for t in mem)
-        if n < int(os.environ.get("TOPIC_MIN", 60)) or mem[0] in drop:  # too small / too vague to browse
+        # clusters reshuffle as data grows, so match the curated taxonomy on any member (most frequent first)
+        mapped = next((merge[t] for t in mem if t in merge), None)
+        if n < int(os.environ.get("TOPIC_MIN", 60)) or (not mapped and mem[0] in drop):  # too small / vague
             continue
-        label = merge.get(mem[0]) or rename.get(mem[0]) or mem[0]
+        label = mapped or rename.get(mem[0]) or mem[0]
         topics.append(dict(label=label, members=mem, count=n))
     by_label = {}
     for tp in topics:
@@ -116,6 +118,9 @@ def main():
     sims = V @ C.T
     theme2topic = {t: int(sims[i].argmax()) for i, t in enumerate(vocab) if sims[i].max() >= 0.80}
     print(len(topics), "topics;", f"{len(theme2topic)}/{len(vocab)} raw themes mapped", flush=True)
+    unlisted = [t["label"] for t in topics if t["label"] not in ov["category"]]
+    if unlisted:
+        print("NOTE unlisted clusters (add to taxonomy.py):", ", ".join(unlisted), flush=True)
 
     # ---- 3. categories
     cats = list(CATEGORIES)
