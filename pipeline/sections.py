@@ -113,7 +113,14 @@ def locate(entries, rows):
 def details(text):
     head = text[:1500]
     info = {}
-    m = DELIV_RE.search(head) or DATE_RE.search(head)
+    # Posthumous volumes print "Intended for reading on Lord's-day, June 23, 1904" / "Published on Thursday ..."
+    # before the real "On Lord's-day Evening, March 11th, 1888" -> prefer a date after Morning/Evening or
+    # "delivered", and never take a publication date as the delivery date.
+    dates = list(DATE_RE.finditer(head))
+    pub = [d for d in dates if re.search(r"(intended for reading|published)[^.]{0,40}$", head[max(0, d.start() - 60):d.start()], re.I)]
+    real = [d for d in dates if d not in pub]
+    pref = [d for d in real if re.search(r"(morning|evening|afternoon|delivered|preached)[^.]{0,25}$", head[max(0, d.start() - 40):d.start()], re.I)]
+    m = (pref or real or [None])[0]
     if m:
         d = re.sub(r"(\d)(st|nd|rd|th)", r"\1", re.sub(r"\s+", " ", m.group(1))).replace(",", "").title()
         info["delivered"] = re.sub(r"(\d{1,2}) (\d{4})$", r"\1, \2", d)          # "May 30, 1875"
