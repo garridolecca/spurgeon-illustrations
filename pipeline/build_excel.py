@@ -7,7 +7,6 @@ import collections, json, os, sqlite3, sys, time
 from openpyxl import Workbook
 from openpyxl.cell import WriteOnlyCell
 from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.worksheet.table import Table, TableStyleInfo
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LR = os.path.join(os.path.dirname(ROOT), "logos-research")
@@ -60,9 +59,7 @@ def main(out=XLSX):
             lc("Logos", "https://app.logos.com/books/" + r["rid"].replace(":", "%3A")) if r.get("rid") else "",
         ])
     n = len(items) + 1
-    tab = Table(displayName="Illustrations", ref=f"A1:S{n}")
-    tab.tableStyleInfo = TableStyleInfo(name="TableStyleLight9", showRowStripes=True)
-    ws.add_table(tab)
+    ws.auto_filter.ref = f"A1:S{n}"
 
     ts = wb.create_sheet("Topics")
     ts.column_dimensions["A"].width, ts.column_dimensions["B"].width = 34, 30

@@ -14,6 +14,9 @@ LR = os.path.join(os.path.dirname(ROOT), "logos-research")
 DB = os.path.join(LR, "library.db")
 GENERIC = re.compile(r"^(the\s+\w+\s+)?(sermon|chapter|chap\.?|lecture|discourse|homily|section|letter|part|book)"
                      r"(\s+[ivxlc\d]+\.?)?$|^the\s+\w+\s+(sermon|chapter|lecture|discourse)$", re.I)
+FRONT = re.compile(r"^(foreword|preface|introduction|introductory|contents|table of contents|title page|dedication|"
+                   r"advertisement|editor[’']?s (note|preface)|publisher[’']?s (note|preface)|to the reader|index.*|"
+                   r"memoir|biographical (sketch|introduction))\b", re.I)
 KINDS = {"analogy": "Analogy", "image": "Image", "story": "Story", "historical": "Historical"}
 
 
@@ -96,6 +99,26 @@ def person(name):
     return name
 
 
+ALIASES = {"Charles H. Spurgeon": "C. H. Spurgeon", "Charles Haddon Spurgeon": "C. H. Spurgeon",
+           "S. John Chrysostom": "John Chrysostom", "Saint Chrysostom": "John Chrysostom",
+           "Andrew Gunton Fuller": "Andrew Fuller", "Thomas Haemerken à Kempis": "Thomas à Kempis"}
+BY_RE = re.compile(r"^By (?:the )?(?:Rev\.?|Mr\.?|Dr\.?|Bishop|Archbishop)?\s*(?P<name>[A-Z][A-Za-z.’' -]+?)(?:,\s*[A-Z][A-Za-z. ]{0,8})?$")
+NAMED_RE = re.compile(r"^(?P<name>[A-Z][A-Za-z.’' -]{2,40}?)\s*\((?:c\.\s*)?\d{3,4}\s*[–-]\s*\d{3,4}\)\s*:\s*(?P<title>.+)$")
+
+
+def book_author(authors, cf):
+    """The writer, not the editor: Logos lists 'Schaff, Philip; John Chrysostom' for the Nicene Fathers."""
+    names = [a.strip() for a in (authors or "").split(";") if a.strip()]
+    ed = (cf.get("ed") or "").split(";")[0].strip().lower()
+    pick = cf.get("au", "").split(";")[0].strip() or (names[0] if names else "")
+    if ed and pick.lower() == ed or not cf.get("au") and ed:
+        others = [n for n in names if n.lower() != ed]
+        if others:
+            pick = others[0]
+    disp = person(pick)
+    return ALIASES.get(disp, disp)
+
+
 def roman_vol(title):
     m = re.search(r"Vol(?:ume)?\.?\s+([IVXLC]+|\d+)\b", title)
     if not m:
@@ -112,8 +135,8 @@ def roman_vol(title):
 
 def section_title(sec):
     path = [re.sub(r"\s*\(Nos?\.?\s*[\d,]+(?:\s*[–-]\s*[\d,]+)?\)\s*$", "", p).strip() for p in (sec or {}).get("path", [])]
-    if not path:
-        return None, None
+    if not path or FRONT.match(path[0]) or len(path[0]) < 4 or path[0].isupper() and len(path[0]) < 8:
+        return None, None      # front matter (a later bookmark was not located) or a junk bookmark ("USE")
     top = path[0]
     sub = path[1] if len(path) > 1 else None
     if GENERIC.match(top) and sub:
@@ -149,7 +172,11 @@ def citation(it):
 
 def fmt_date(d):
     """'May 30 1875' -> 'May 30, 1875'."""
-    return re.sub(r"(\d{1,2}),? (\d{4})$", lambda m: f"{m.group(1)}, {m.group(2)}", d) if d else None
+    if not d:
+        return None
+    d = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", d, flags=re.I).replace(",", "")
+    m = re.match(r"([A-Za-z]+)\s+(\d{1,2})\s+(\d{4})$", d.strip())
+    return f"{m.group(1).title()} {int(m.group(2))}, {m.group(3)}" if m else d.strip()
 
 
 def norm_scripture(lst):
@@ -193,6 +220,13 @@ def main():
         title, authors, year, cf, rid = books[bid]
         sec = sections.get(str(r)) or {}
         stitle, ssub = section_title(sec)
+        author_disp = book_author(authors, cf)
+        if stitle:   # anthologies: the section names the preacher
+            m = BY_RE.match(stitle) or NAMED_RE.match(stitle)
+            if m:
+                author_disp = ALIASES.get(m.group("name").strip(), m.group("name").strip())
+                stitle = (m.groupdict().get("title") or ssub or "").strip() or None
+                ssub = None if stitle == ssub else ssub
         for it in p["items"]:
             if len(it.get("summary", "")) < 20:
                 continue
@@ -207,7 +241,6 @@ def main():
                 passage = best_window(page_txt, it["summary"] + " " + it.get("point", ""))
                 q = "approx" if passage else "none"
             stats[q] += 1
-            auth_raw = cf.get("au") or (authors or "").split(";")[0]
             rec = dict(
                 id=hashlib.sha1(f"{r}:{it['title']}".encode()).hexdigest()[:10],
                 title=it["title"].strip(), kind=KINDS.get(it.get("kind"), "Image"),
@@ -215,7 +248,7 @@ def main():
                 themes=[x.strip().lower() for x in it.get("themes", []) if x and len(x) < 60][:6],
                 scripture=norm_scripture(it.get("scripture")),
                 passage=passage, passage_quality=q,
-                author=(authors or "").split(";")[0].strip(), author_display=person(auth_raw.split(";")[0]),
+                author=(authors or "").split(";")[0].strip(), author_display=author_disp,
                 book=title, book_id=bid, rid=rid, page=str(pg),
                 year=cf.get("yr") or year, place=(cf.get("pl") or "").split(";")[0].strip() or None,
                 publisher=(cf.get("pr") or "").split(";")[0].strip() or None,

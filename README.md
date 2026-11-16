@@ -33,7 +33,7 @@ public-domain sermon volumes (PDF + text)
       └─ pipeline/embed.py      bge-small-en-v1.5 vectors; theme tags clustered into canonical topics
                                 and categories; each illustration tagged by its themes + nearest topics
       └─ pipeline/build_excel.py  the Illustration Bank workbook
-      └─ pipeline/publish.sh    data → `data` branch → GitHub Actions → GitHub Pages
+      └─ pipeline/publish.sh    builds the site → `gh-pages` branch (GitHub Pages); dataset → `data` branch
 ```
 
 The site is fully static. The browser downloads the illustrations and their int8-quantized vectors once
@@ -43,11 +43,12 @@ keyword ranking (MiniSearch) so exact words help while meaning decides.
 
 ## Data
 
-The `data` branch holds the generated files (replaced on every refresh):
+The `data` branch holds the generated dataset (replaced on every refresh):
 
 - `dataset/illustrations.jsonl.gz` — every illustration with all fields, including the passage and citation.
 - `dataset/topics.json` — topics, their category and member theme words.
-- `site/` — the files the app loads.
+
+The `gh-pages` branch is the built site (also replaced on every refresh).
 
 ## Caveats
 
