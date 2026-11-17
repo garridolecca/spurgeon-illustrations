@@ -111,6 +111,30 @@ def main():
             by_label[tgt]["count"] += tp["count"]
         else:
             by_label[tgt] = dict(tp, label=tgt)
+    # clusters the taxonomy doesn't know yet (new data reshuffles clustering): fold each into the curated topic
+    # whose name or listed cluster labels it is closest to, when that is clear (cos >= TOPIC_AUTO); else keep it
+    finals = sorted(set(merge.values()))
+    alias = [(f, f) for f in finals] + [(a, f) for a, f in merge.items()]
+    A = enc(m, [a for a, _ in alias])
+    auto_th = float(os.environ.get("TOPIC_AUTO", 0.83))
+    for lab in [l for l in by_label if l not in ov["category"]]:
+        tp = by_label[lab]
+        u = V[[vi[t] for t in tp["members"]]].mean(0)
+        s = A @ (u / np.linalg.norm(u))
+        j = int(s.argmax())
+        if s[j] >= auto_th:
+            tgt = alias[j][1]
+            print(f"AUTO {lab} -> {tgt} ({s[j]:.2f}, via '{alias[j][0]}')", flush=True)
+            if tgt in by_label:
+                by_label[tgt]["members"] += tp["members"]
+                by_label[tgt]["count"] += tp["count"]
+            else:
+                by_label[tgt] = dict(tp, label=tgt)
+            del by_label[lab]
+        elif os.environ.get("KEEP_UNLISTED") != "1":
+            # not a browse topic of its own: its illustrations keep their semantic topic tags and stay searchable
+            print(f"UNMAPPED {lab} ({tp['count']})", flush=True)
+            del by_label[lab]
     topics = sorted(by_label.values(), key=lambda t: -t["count"])
     C = np.stack([V[[vi[t] for t in tp["members"]]].mean(0) for tp in topics])
     C /= np.linalg.norm(C, axis=1, keepdims=True)
