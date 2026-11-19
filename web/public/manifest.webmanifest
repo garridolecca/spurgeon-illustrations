@@ -1,0 +1,11 @@
+{
+  "name": "Spurgeon Illustrations",
+  "short_name": "Illustrations",
+  "description": "Search sermon illustrations from C. H. Spurgeon and the Puritans by meaning.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#faf7f2",
+  "theme_color": "#7a2e1f",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

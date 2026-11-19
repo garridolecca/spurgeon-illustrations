@@ -19,8 +19,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
 WEB = os.path.join(ROOT, "web", "public", "data")
-MODEL = "BAAI/bge-small-en-v1.5"
-QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+MODEL = "BAAI/bge-small-en-v1.5"          # topics, categories, semantic tags (calibrated on this model)
+# search vectors: multilingual, so English and Spanish queries both find every illustration
+SEARCH_MODEL, SEARCH_WEB_MODEL = "intfloat/multilingual-e5-small", "Xenova/multilingual-e5-small"
+QUERY_PREFIX, PASSAGE_PREFIX, POOLING = "query: ", "passage: ", "mean"
 
 CATEGORIES = {
     "God and His Attributes": "the being and character of God: holiness, sovereignty, power, wisdom, faithfulness, love, mercy, justice, omniscience, the Trinity",
@@ -160,6 +162,17 @@ def main():
     def text_of(it):
         return f"{it['title']}. {it['summary']} {it['point']} Themes: {', '.join(it['themes'])}."
     E = enc(m, [text_of(it) for it in items], bs=512)
+    # Spanish translations (pipeline/translate.py), when present
+    es = {}
+    p_es = os.path.join(DATA, "items_es.jsonl")
+    if os.path.exists(p_es):
+        for l in open(p_es, encoding="utf8"):
+            r = json.loads(l)
+            es[r.pop("id")] = r
+    for it in items:
+        r = es.get(it["id"], {})
+        it["es"] = {k: r.get(k, "") for k in ("title", "summary", "point", "passage")}
+    print(f"{sum(1 for it in items if it['es']['title'])} illustrations with Spanish", flush=True)
     S = E @ C.T
     for i, it in enumerate(items):
         own = []
@@ -183,13 +196,28 @@ def main():
             f.write(json.dumps(it, ensure_ascii=False) + "\n")
     json.dump([dict(label=t["label"], category=t["category"], items=t["items"], members=t["members"][:25])
                for t in topics], open(os.path.join(DATA, "topics.json"), "w", encoding="utf8"), ensure_ascii=False, indent=1)
-    np.save(os.path.join(DATA, "item_emb.npy"), E.astype(np.float16))
+    # search vectors (English + Spanish text) with the multilingual model; the MCP server uses the same ones
+    import torch
+    from sentence_transformers import SentenceTransformer
+    del m
+    torch.cuda.empty_cache()
+    sm = SentenceTransformer(SEARCH_MODEL, device="cuda" if torch.cuda.is_available() else "cpu")
+    def search_text(it):
+        e = it["es"]
+        return (PASSAGE_PREFIX + text_of(it) + (f" {e['title']}. {e['summary']} {e['point']}" if e["title"] else ""))
+    ES_ = enc(sm, [search_text(it) for it in items], bs=256)
+    np.save(os.path.join(DATA, "item_emb.npy"), ES_.astype(np.float16))
 
     # ---- web data
-    write_web(items, topics, E)
+    write_web(items, topics, ES_)
+
+
+# the browser model file is split (GitHub refuses files over 100 MB); the app reassembles it into its cache
+MODEL_PARTS = ["onnx/model_quantized.onnx.part0", "onnx/model_quantized.onnx.part1"]
 
 
 def write_web(items, topics, E):
+    import taxonomy_es
     os.makedirs(os.path.join(WEB, "passages"), exist_ok=True)
     # books table (citation base computed once per book)
     books, bidx = [], {}
@@ -208,11 +236,12 @@ def write_web(items, topics, E):
         rows.append([it["id"], it["title"], it["kind"], it["summary"], it["point"],
                      [tix[t] for t in it["topics"]], it["scripture"], aidx[it["author_display"]], bidx[it["book_id"]],
                      it.get("sermon") or "", it.get("sermon_part") or "", it.get("sermon_no") or 0,
-                     it.get("delivered") or "", it.get("sermon_text") or "", it["page"]])
+                     it.get("delivered") or "", it.get("sermon_text") or "", it["page"],
+                     it["es"]["title"], it["es"]["summary"], it["es"]["point"]])
     json.dump(rows, open(os.path.join(WEB, "items.json"), "w", encoding="utf8"), ensure_ascii=False, separators=(",", ":"))
     CH = 2000
     for k in range(0, len(items), CH):
-        json.dump([[it["passage"], it["passage_quality"][0]] for it in items[k:k + CH]],
+        json.dump([[it["passage"], it["passage_quality"][0], it["es"]["passage"]] for it in items[k:k + CH]],
                   open(os.path.join(WEB, "passages", f"{k // CH}.json"), "w", encoding="utf8"),
                   ensure_ascii=False, separators=(",", ":"))
     # int8 vectors with a per-vector scale
@@ -222,8 +251,11 @@ def write_web(items, topics, E):
     sc.astype(np.float32).tofile(os.path.join(WEB, "emb.scale.f32"))
     meta = dict(
         version=__import__("time").strftime("%Y-%m-%d %H:%M"), count=len(items), dims=int(E.shape[1]),
-        model="Xenova/bge-small-en-v1.5", query_prefix=QUERY_PREFIX, passage_chunk=CH,
+        model=SEARCH_WEB_MODEL, query_prefix=QUERY_PREFIX, pooling=POOLING, passage_chunk=CH,
+        model_parts=MODEL_PARTS,
         categories=cats, topics=[[t["label"], cats.index(t["category"]), t["items"]] for t in topics],
+        categories_es=[taxonomy_es.CATEGORIES_ES.get(c, c) for c in cats],
+        topics_es=[taxonomy_es.topic_es(t["label"]) for t in topics], kinds_es=taxonomy_es.KINDS_ES,
         authors=authors, books=books,
         kinds=sorted({it["kind"] for it in items}),
     )

@@ -6,3 +6,6 @@ data/
 __pycache__/
 *.pyc
 refresh*.log
+models/
+translate.log
+dupes.log

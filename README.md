@@ -1,6 +1,6 @@
 # Spurgeon Illustrations
 
-**Live search:** https://garridolecca.github.io/spurgeon-illustrations/
+**Live search:** https://garridolecca.github.io/spurgeon-illustrations/ · **En español:** https://garridolecca.github.io/spurgeon-illustrations/?lang=es
 
 A searchable bank of sermon illustrations from **C. H. Spurgeon** and the **Puritans** (Brooks, Sibbes, Manton,
 Watson, Bunyan, Baxter, Goodwin, Edwards and others): stories, historical incidents, analogies and images,
@@ -10,6 +10,26 @@ Search works by **meaning**, not exact words: *compassion* finds illustrations a
 care even when the word "compassion" never appears; *the love of God* finds the father running to the
 prodigal. A Bible reference (`Romans 8:28`, `Psalm 23`, `Heb 11`) finds the illustrations tied to that text,
 including every illustration from a sermon preached on it.
+
+The app and its content are bilingual (English / Español): switch with **EN | ES** at the top. Search by
+meaning works in either language against every illustration (multilingual-e5-small), and each illustration
+has a Spanish title, summary, point and a machine-translated passage next to the English original.
+
+## Features
+
+- Search by meaning, by words, or by Bible reference; browse by topic, **Bible book and chapter**, author, kind and **passage length**.
+- **My list**: star illustrations while preparing a sermon, then copy them with their citations, print, or download a Word file (kept in your browser only).
+- **Illustration of the day**, **Random illustration**, and a direct link to any single illustration.
+- Near-duplicate illustrations are hidden from results (see `pipeline/` and `data/dupes.json`).
+- Fast start: the library loads first (about 30 MB) and meaning search finishes loading in the background; a service worker caches everything so later visits and offline use are instant, and the site can be installed as an app.
+
+## En español
+
+Banco de ilustraciones para sermones de **C. H. Spurgeon** y los **puritanos**, con búsqueda por *significado*
+en español o en inglés: escriba lo que quiere ilustrar ("el amor de Dios", "compasión por los pecadores") o una
+referencia bíblica (`Juan 3:16`, `Salmo 23`, `Ro 8:28`). Cada ilustración tiene título, resumen y enseñanza en
+español, el pasaje original en inglés y su **traducción automática**, y una cita Turabian del sermón, libro y
+página. Verifique siempre el original antes de predicarlo.
 
 ## Using it
 

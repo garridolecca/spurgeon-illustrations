@@ -32,8 +32,18 @@ export function parseCanon(s: string): Ref | null {
   return { book, ch: +m[2], v1, v2: m[4] ? +m[4] : v1 };
 }
 
-export function formatRef(r: Ref): string {
-  return `${r.book === 19 && r.ch ? "Psalm" : bookName(r.book)}${r.ch ? " " + r.ch : ""}${r.v1 ? ":" + r.v1 + (r.v2 !== r.v1 ? "–" + r.v2 : "") : ""}`;
+export function formatRef(r: Ref, lang: "en" | "es" = "en"): string {
+  const name = lang === "es"
+    ? (r.book === 19 && r.ch ? "Salmo" : data.books_es[r.book - 1])
+    : (r.book === 19 && r.ch ? "Psalm" : bookName(r.book));
+  return `${name}${r.ch ? " " + r.ch : ""}${r.v1 ? ":" + r.v1 + (r.v2 !== r.v1 ? "–" + r.v2 : "") : ""}`;
+}
+
+/** A canonical English reference shown in the reader's language ("Romans 8:28" -> "Romanos 8:28"). */
+export function showRef(s: string, lang: "en" | "es"): string {
+  if (lang === "en") return s;
+  const r = parseCanon(s);
+  return r ? formatRef(r, "es") : s;
 }
 
 /** 3 = verses overlap, 2 = same chapter (or whole chapter asked), 1 = same book, 0 = no match. */

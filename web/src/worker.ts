@@ -1,9 +1,11 @@
 /// <reference lib="webworker" />
 /**
  * Search engine (runs off the main thread).
- *  - semantic: the query is embedded in the browser with bge-small-en-v1.5 (the same model that embedded the
- *    illustrations) and scored against int8 vectors (dot product x per-vector scale);
- *  - keyword: MiniSearch BM25 over title / summary / point / topics / sermon, with prefix + light fuzziness;
+ *  - semantic: the query is embedded in the browser with multilingual-e5-small (the same model that embedded the
+ *    illustrations' English + Spanish text), so English and Spanish queries both work; int8 vectors
+ *    (dot product x per-vector scale);
+ *  - keyword: MiniSearch BM25 over title / summary / point / topics / sermon in English and Spanish, accent-
+ *    insensitive, with prefix + light fuzziness;
  *  - the two rankings are fused with Reciprocal Rank Fusion, so exact words help but meaning decides;
  *  - a query that is a Bible reference ("Rom 8:28", "Psalm 23") searches the illustrations' Scripture and the
  *    sermon texts instead.
@@ -21,6 +23,9 @@ let S: Float32Array;
 let dims = 384;
 let refs: Ref[][] = [];
 let mini: MiniSearch;
+let indexPromise: Promise<void> | null = null;
+let vectorsPromise: Promise<void> | null = null;
+let hidden: Uint8Array | null = null;   // 1 = near-duplicate of another illustration (hidden unless asked for)
 let extractor: ((t: string, o: object) => Promise<{ data: Float32Array }>) | null = null;
 let modelPromise: Promise<void> | null = null;
 let base = "/";
@@ -54,14 +59,8 @@ async function init(b: string) {
   const v = encodeURIComponent(meta.version);
   dims = meta.dims;
   modelPromise = loadModel(); // in parallel with the data
-  const [itemsBuf, embBuf, scaleBuf] = await Promise.all([
-    fetchWithProgress(`${d}items.json?v=${v}`, "Loading illustrations", 5, 45),
-    fetchWithProgress(`${d}emb.i8?v=${v}`, "Loading meaning vectors", 45, 85),
-    fetch(`${d}emb.scale.f32?v=${v}`).then((r) => r.arrayBuffer()),
-  ]);
+  const itemsBuf = await fetchWithProgress(`${d}items.json?v=${v}`, "Loading illustrations", 5, 85);
   items = JSON.parse(new TextDecoder().decode(itemsBuf));
-  E = new Int8Array(embBuf);
-  S = new Float32Array(scaleBuf);
   post({ type: "progress", stage: "Indexing", pct: 88 });
   refs = items.map((it) => {
     const out: Ref[] = [];
@@ -69,24 +68,64 @@ async function init(b: string) {
     if (it[13]) { const r = parseCanon(it[13]); if (r) out.push(r); }
     return out;
   });
+  indexPromise = Promise.resolve().then(buildIndex);
+  loadExtras(d, v);
+  post({ type: "ready", meta, items });
+  // the meaning vectors (the larger download) arrive in the background; word search works meanwhile
+  vectorsPromise = loadVectors(d, v);
+}
+
+
+function buildIndex() {
+  const fold = (t: string) => t.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
   mini = new MiniSearch({
-    fields: ["title", "summary", "point", "topics", "sermon"],
+    fields: ["title", "summary", "point", "topics", "sermon", "titleEs", "summaryEs", "pointEs", "topicsEs"],
     storeFields: [],
-    searchOptions: { boost: { title: 2.5, topics: 1.8, point: 1.3 }, prefix: (t) => t.length > 3, fuzzy: (t) => (t.length > 5 ? 0.15 : false) },
+    processTerm: fold,
+    searchOptions: {
+      boost: { title: 2.5, titleEs: 2.5, topics: 1.8, topicsEs: 1.8, point: 1.3, pointEs: 1.3 },
+      prefix: (t) => t.length > 3, fuzzy: (t) => (t.length > 5 ? 0.15 : false), processTerm: fold,
+    },
   });
   mini.addAll(items.map((it, i) => ({
     id: i, title: it[1], summary: it[3], point: it[4], sermon: it[9],
     topics: it[5].map((t) => meta.topics[t][0]).join(" "),
+    titleEs: it[15] ?? "", summaryEs: it[16] ?? "", pointEs: it[17] ?? "",
+    topicsEs: meta.topics_es ? it[5].map((t) => meta.topics_es![t]).join(" ") : "",
   })));
-  post({ type: "ready", meta, items });
+}
+
+async function loadVectors(d: string, v: string) {
+  const [embBuf, scaleBuf] = await Promise.all([
+    fetchWithProgress(`${d}emb.i8?v=${v}`, "Loading meaning vectors", 0, 100),
+    fetch(`${d}emb.scale.f32?v=${v}`).then((r) => r.arrayBuffer()),
+  ]);
+  E = new Int8Array(embBuf);
+  S = new Float32Array(scaleBuf);
+  post({ type: "vectors" });
+}
+
+/** Optional files written by pipeline/: near-duplicate map. Missing files are fine. */
+async function loadExtras(d: string, v: string) {
+  try {
+    const r = await fetch(`${d}dupes.json?v=${v}`);
+    if (r.ok) {
+      const map = (await r.json()) as Record<string, string>;
+      const idx = new Map(items.map((it, i) => [it[0], i]));
+      hidden = new Uint8Array(items.length);
+      for (const k of Object.keys(map)) { const i = idx.get(k); if (i != null) hidden[i] = 1; }
+    }
+  } catch { /* optional */ }
 }
 
 async function loadModel() {
   try {
     const tf = await import("@huggingface/transformers");
-    tf.env.allowRemoteModels = false;
     tf.env.allowLocalModels = true;
     tf.env.localModelPath = new URL(`${base}models/`, self.location.origin).href;
+    // the weights are served in parts (GitHub Pages refuses files over 100 MB): put them back together in the
+    // cache where transformers.js looks first, so the model loads from the site and stays cached
+    tf.env.allowRemoteModels = !(await assembleModel(tf.env.localModelPath));
     const pipe = await tf.pipeline("feature-extraction", meta.model, {
       dtype: "q8",
       progress_callback: (p: { status: string; progress?: number }) => {
@@ -100,15 +139,36 @@ async function loadModel() {
   }
 }
 
+async function assembleModel(root: string): Promise<boolean> {
+  if (!meta.model_parts?.length || typeof caches === "undefined") return true;
+  try {
+    const key = `${root.replace(/\/$/, "")}/${meta.model}/onnx/model_quantized.onnx`;
+    const cache = await caches.open("transformers-cache");
+    if (await cache.match(key)) return true;
+    const parts: ArrayBuffer[] = [];
+    for (let k = 0; k < meta.model_parts.length; k++) {
+      const n = meta.model_parts.length;
+      parts.push(await fetchWithProgress(`${root.replace(/\/$/, "")}/${meta.model}/${meta.model_parts[k]}`,
+        "Loading meaning model", 85 + (15 * k) / n, 85 + (15 * (k + 1)) / n));
+    }
+    const blob = new Blob(parts, { type: "application/octet-stream" });
+    await cache.put(key, new Response(blob, { headers: { "content-type": "application/octet-stream", "content-length": String(blob.size) } }));
+    return true;
+  } catch {
+    return false; // e.g. storage blocked: let transformers.js fetch the model from Hugging Face instead
+  }
+}
+
 async function embed(text: string): Promise<Float32Array | null> {
   if (modelPromise) await modelPromise;
   if (!extractor) return null;
-  const out = await extractor(meta.query_prefix + text, { pooling: "cls", normalize: true });
+  const out = await extractor(meta.query_prefix + text, { pooling: meta.pooling ?? "cls", normalize: true });
   return out.data;
 }
 
 function passes(i: number, f: Filters): boolean {
   const it = items[i];
+  if (hidden && hidden[i] && !f.dupes) return false;
   if (f.author != null && it[7] !== f.author) return false;
   if (f.book != null && it[8] !== f.book) return false;
   if (f.kind && it[2] !== f.kind) return false;
@@ -118,6 +178,7 @@ function passes(i: number, f: Filters): boolean {
 }
 
 function semanticRank(q: Float32Array, cand: number[], limit: number, exclude = -1): [number, number][] {
+  if (!E) return [];
   const out: [number, number][] = [];
   for (const i of cand) {
     if (i === exclude) continue;
@@ -154,7 +215,7 @@ async function search(q: string, f: Filters): Promise<SearchResult> {
     // best match first; among equals, illustrations tied to few passages (i.e. specifically to this one) first
     scored.sort((a, b) => b[1] - a[1] || refs[a[0]].length - refs[b[0]].length);
     const ids = scored.map((s) => s[0]);
-    return { ids, mode: "scripture", ref: formatRef(ref), related: related(ids, f), ms: performance.now() - t0 };
+    return { ids, mode: "scripture", ref: formatRef(ref), refObj: ref, related: related(ids, f), ms: performance.now() - t0 };
   }
 
   // 2. browse: no query -> order a topic / filter by closeness to the topic itself
@@ -162,14 +223,15 @@ async function search(q: string, f: Filters): Promise<SearchResult> {
     let ids = cand;
     if (f.topic != null || f.category != null) {
       const label = f.topic != null ? meta.topics[f.topic][0] : meta.categories[f.category!];
-      const v = await embed(label);
+      const v = E ? await embed(label) : null;
       if (v) ids = semanticRank(v, cand, cand.length).map((x) => x[0]);
     }
     return { ids, mode: "browse", related: related(ids, f), ms: performance.now() - t0 };
   }
 
   // 3. meaning + words, fused
-  const v = await embed(q);
+  if (indexPromise) await indexPromise;
+  const v = E ? await embed(q) : null;
   const sem = v ? semanticRank(v, cand, 600) : [];
   const allowed = new Set(cand);
   const kw = mini.search(q, { combineWith: "OR" }).filter((r) => allowed.has(r.id as number)).slice(0, 600);
@@ -185,6 +247,7 @@ async function search(q: string, f: Filters): Promise<SearchResult> {
 }
 
 async function similar(index: number, f: Filters): Promise<SearchResult> {
+  if (vectorsPromise) await vectorsPromise;
   const t0 = performance.now();
   const q = new Float32Array(dims);
   const o = index * dims;
